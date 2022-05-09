@@ -10,13 +10,13 @@ Simulator.
 Commands to run project from hoare server:
 ```
 $ make
-$ ./oss -v 
+$ ./oss v 
 ```
 where all other parameters are default, number of process 18, number of resource 10, termination time 5.
 OR:
 ```
 $ make
-$ ./oss -v -t [termination time] -n [number of procrss] -r [number of resource]
+$ ./oss v -t [termination time] -n [number of procrss] -r [number of resource]
 ```
 
 ## Git

@@ -7,14 +7,14 @@
 
 #include "config.h"
 
-int opt, nprocs = MAXPROC, nresources = MAXRESOURCE, terminate_time = 5, errno, pid = 0, linenum = 0, *parents = NULL, *children = NULL;
+int opt, nprocs = MAXPROC, nresources = MAXRESOURCE, terminate_time = 10, errno, pid = 0, linenum = 0, *parents = NULL, *children = NULL;
 static bool verbose = false;
 char buf[250];
 
 int main(int argc, char *argv[]){
     /* Interrupt signal handling */
-    signal(SIGALRM, signal_abort);//Abort for end of termination time 
-    signal(SIGINT, signal_abort);// Abort for Ctrl+C 
+    signal(SIGALRM, ReportStatistics);//Abort for end of termination time 
+    signal(SIGINT, ReportStatistics);// Abort for Ctrl+C 
 
 
     printf("oss is processessing...\n");    
@@ -115,7 +115,7 @@ int main(int argc, char *argv[]){
    /* Simulation starts */ 
     while(1){
         /* inceases system clock */    
-        increase_clock(1000);
+        increase_clock(100);
         
         /* random time for forking (1-500ms) */
         if (doSim){
@@ -134,16 +134,18 @@ int main(int argc, char *argv[]){
                 break;
             } else {
                 if(forkedchild >= 40){
-                   signal_abort();
+                   ReportStatistics();
                 }
             }
         }
 
         /* fork user process when hit random time */
         if ((((*clock_s * TO_NANO) + *clock_ns) > processScheduleNS) && forkedchild < 40) {
-            increase_clock(10000);
+            increase_clock(100);
             childPid = fork();//Forking the process
-            /* Checking fork */
+            //wait(NULL);
+            //waitpid(childPid, 0 ,0);
+            // Checking fork 
             if (childPid == -1) {
                  perror("OSS: Error: Failed to create a child process");
 	         cleanAll();
@@ -163,15 +165,15 @@ int main(int argc, char *argv[]){
             forkedchild++;           
         }
 
-
+        wait(NULL);
         /* Checking if resource is requested or released */
         for (int p = 0; p < nprocs; p++) {   //Processes iteration       
             for (int r = 0; r < nresources; r++) { // Resources iteration
-                increase_clock(1000);
+                increase_clock(100);
                 if(rd->releaseVector[r] > 0){
                     rd->allocationVector[r] += rd->releaseVector[r];// incrementing available resource after releasing
                     rd->allocationMatrix[p][r] -= rd->releaseVector[r];// decrementing allocated resource after releasing
-                    sprintf(buf, "\tResources released : R%i:%i\n", r, rd->releaseVector[r]);
+                    sprintf(buf, "\tResources released : R%d:%d\n", r, rd->releaseVector[r]);
                     logging(buf);
                     for (int i = 0; i < nprocs; i++) {//since resources has been released, waiting processes awake to check if they can get resource 
                         waitingQ[i] = false;
@@ -215,7 +217,17 @@ int main(int argc, char *argv[]){
                         waitingQ[i] = false;
                     }
                     rd->requestMatrix[p][r] = 0;// request matrix set to zero
-                }
+                }else if (rd->releaseVector[r] > 0) {
+                    sprintf(buf, "Master detecting Process P%d terminated at time %d:%d\n", p, *clock_s, *clock_ns);
+                    logging(buf);
+                    rd->allpid[p] = 0;
+                    for (int r2 = 0; r2 < nresources; r2++) {
+                        rd->requestMatrix[p][r2] = 0;
+                        rd->allocationVector[r2] += rd->allocationMatrix[p][r2];
+                        rd->allocationMatrix[p][r2] = 0;
+                    }
+
+                } 
                
             }
         }
@@ -223,7 +235,7 @@ int main(int argc, char *argv[]){
         /* deadlock detection algorithm is running periodically in every second */
         bool deadlockflag = true;
         if (((*clock_s * TO_NANO) + *clock_ns) > (trackNS + TO_NANO)) {    
-            increase_clock(10000);
+            increase_clock(100);
             while(1){
                 sr->deadlockRuns++;
                 if (deadlock(rd->allocationVector, nresources, nprocs, rd->requestMatrix , rd->allocationMatrix)){
@@ -288,7 +300,7 @@ int main(int argc, char *argv[]){
         }
 
         if (verbose) {
-            if (grantedReq >= 5) {
+            if (grantedReq >= 2) {
                 sprintf(buf, "## Resource Vector ##\n");
                 logging(buf);//logging
                 for (int i = 0; i < nresources; i++) {
@@ -339,34 +351,34 @@ int main(int argc, char *argv[]){
 
 /* signal handle for time out or CTRL+C or other interuption */
 void signal_abort() {
-
+    //printf("Aborting");
     ReportStatistics(); 
     cleanAll();
 }
 
 void ReportStatistics(){
-    sprintf(buf, "\n## Statistics Report ##\n");
-    logging(buf);//logging
-    sprintf(buf, "Number of requests granted immediately: %d\n", sr->immediateGrant);
-    logging(buf);//logging
-    sprintf(buf, "Number of requests granted after waiting: %d\n", sr->waitedGrant);
-    logging(buf);//logging
-    sprintf(buf, "Number of requests terminated by deadlock: %d\n", sr->deadlockTerminations);
-    logging(buf);//logging
-    sprintf(buf, "Number of requests terminated successfully: %d\n", sr->terminationSuccess);
-    logging(buf);//logging
-    sprintf(buf, "Number of time deadlock detection algorithm run: %d\n", sr->deadlockRuns);
-    logging(buf);//logging    
+    fprintf(file, "\n## Statistics Report ##\n");
+   // logging(buf);//logging
+    fprintf(file, "Number of requests granted immediately: %d\n", sr->immediateGrant);
+  //  logging(buf);//logging
+    fprintf(file, "Number of requests granted after waiting: %d\n", sr->waitedGrant);
+  //  logging(buf);//logging
+    fprintf(file, "Number of requests terminated by deadlock: %d\n", sr->deadlockTerminations);
+  //  logging(buf);//logging
+    fprintf(file, "Number of requests terminated successfully: %d\n", sr->terminationSuccess);
+  //  logging(buf);//logging
+    fprintf(file, "Number of time deadlock detection algorithm run: %d\n", sr->deadlockRuns);
+ //   logging(buf);//logging    
     fclose(file);
+    cleanAll();
 }
 
 void cleanAll(){
-    int status;
     for (int p = 0; p < nprocs; p++) {
         wait(NULL);
         if (rd->allpid[p] != 0) {
             kill(rd->allpid[p], SIGTERM);
-            waitpid(rd->allpid[p], &status, 0);
+            waitpid(rd->allpid[p], 0, 0);
         }
     }  
     killpg((*parents), SIGTERM);
@@ -375,12 +387,12 @@ void cleanAll(){
     if (shmdt(clock_ns) == -1 || shmdt(clock_s) == -1 || shmdt(rd) == -1 || shmdt(sr) == -1) {
       perror("OSS: Error: shmdt failed to detach memory");
       cleanAll();
-      abort();
+     // abort();
     }
     if (shmctl(clock_nsid, IPC_RMID, 0) == -1 || shmctl(clock_sid, IPC_RMID, 0) == -1 || shmctl(rd_id, IPC_RMID, 0) == -1 || shmctl(sr_id, IPC_RMID, 0) == -1) {
       perror("OSS: Error: shmctl failed to delete shared memory");
       cleanAll();
-      abort();
+     // abort();
     }   
     cleanAll();     
     abort();
@@ -404,7 +416,8 @@ void logging(char * str){
     else{
         printf("OSS: logfile exceeds 10000 line, terminating\n");
         fputs("OSS: logfile exceeds 10000 line, terminating\n", file);
-        cleanAll();
+        ReportStatistics(); 
+       
     }
 }
 

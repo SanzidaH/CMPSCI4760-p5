@@ -48,7 +48,7 @@ int main(int argc, char *argv[])
 
     while(1){
         /* inceases system clock */    
-        increase_clock(1000);
+        increase_clock(100);
         //continue to loop and check to see if it is granted that resource
         for (int r = 0; r < nresources; r++) { // resource requested
             if (rd->requestMatrix[p][r] > 0) { 
@@ -86,13 +86,11 @@ int main(int argc, char *argv[])
         /* Checking if process has run for at least 1 second and hitted termination time */
         currenTimeTemp = (*clock_s * TO_NANO) + *clock_ns;
         if ((currenTimeTemp > (procStartNS + TO_NANO)) && ( currenTimeTemp > terminationNS)) { 
-            //Do a russian roulette dice roll
             if (terminate) {
-                rd->requestMatrix[p][0] = -30;
+                rd->releaseVector[p] = 1;
                 sr->terminationSuccess += 1;
                 cleanAll();
             }
-
             terminationCheck = true;
         }
     }
@@ -113,7 +111,7 @@ void cleanAll() {
     if (shmdt(clock_ns) == -1 || shmdt(clock_s) == -1 || shmdt(rd) == -1 || shmdt(sr) == -1) {
       perror("process: Error: shmdt failed to detach memory");
     }
-    abort();
+    //abort();
     exit(EXIT_SUCCESS);
 }
 
